@@ -1,0 +1,212 @@
+<style>
+  .result-box { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-top: 8px; }
+  .reject   { background: var(--color-background-success); color: var(--color-text-success); border: 0.5px solid var(--color-border-success); }
+  .noReject { background: var(--color-background-warning); color: var(--color-text-warning); border: 0.5px solid var(--color-border-warning); }
+  .step-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px; }
+  .step-num { min-width: 22px; height: 22px; border-radius: 50%; background: var(--color-background-info); color: var(--color-text-info); font-size: 12px; font-weight: 500; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-text { font-size: 13px; color: var(--color-text-secondary); padding-top: 2px; line-height: 1.5; }
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; margin-bottom: 16px; }
+  .lbl  { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 3px; display: flex; align-items: center; gap: 4px; }
+  .hint { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+  .tag        { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+  .tag-blue   { background: var(--color-background-info);    color: var(--color-text-info);    }
+  .tag-red    { background: var(--color-background-danger);  color: var(--color-text-danger);  }
+  .tag-amber  { background: var(--color-background-warning); color: var(--color-text-warning); }
+  .tag-green  { background: var(--color-background-success); color: var(--color-text-success); }
+  .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin: 12px 0; }
+  .metric { background: var(--color-background-secondary); border-radius: 8px; padding: 8px 10px; }
+  .metric-label { font-size: 11px; color: var(--color-text-secondary); }
+  .metric-value { font-size: 18px; font-weight: 500; color: var(--color-text-primary); margin-top: 2px; }
+</style>
+
+<h2 class="sr-only">Minh họa p-value trong kiểm định giả thuyết — có 4 thanh điều chỉnh</h2>
+
+<div style="padding: 0 0 4px;">
+  <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0 0 14px; line-height: 1.6;">
+    Kéo 4 thanh để thay đổi các tham số và quan sát p-value thay đổi theo thời gian thực.
+  </p>
+
+  <div class="controls">
+    <div>
+      <div class="lbl">Tỷ lệ quan sát được <span class="tag tag-blue" id="obs-tag">3.8%</span></div>
+      <input type="range" id="obs-slider" min="30" max="65" value="38" step="1">
+      <div class="hint">Giao diện mới đang cho thấy tỷ lệ mua hàng này</div>
+    </div>
+    <div>
+      <div class="lbl">Ngưỡng α <span class="tag tag-red" id="alpha-tag">0.05</span></div>
+      <input type="range" id="alpha-slider" min="1" max="15" value="5" step="1">
+      <div class="hint">Mức rủi ro tối đa bạn chấp nhận khi bác bỏ H₀</div>
+    </div>
+    <div>
+      <div class="lbl">Cỡ mẫu mỗi tuần <span class="tag tag-amber" id="n-tag">500</span> lượt</div>
+      <input type="range" id="n-slider" min="1" max="20" value="2" step="1">
+      <div class="hint">Lượt truy cập thu thập mỗi tuần (×250)</div>
+    </div>
+    <div>
+      <div class="lbl">Thời gian chạy <span class="tag tag-green" id="time-tag">2 tuần</span></div>
+      <input type="range" id="time-slider" min="1" max="12" value="2" step="1">
+      <div class="hint">Chạy lâu hơn → tổng mẫu lớn hơn → SE nhỏ hơn</div>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="metric">
+      <div class="metric-label">Tổng lượt / nhóm</div>
+      <div class="metric-value" id="m-n">1,000</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">SE (sai số chuẩn)</div>
+      <div class="metric-value" id="m-se">0.54%</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Z-score</div>
+      <div class="metric-value" id="m-z">1.48</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">p-value</div>
+      <div class="metric-value" id="m-pv">0.0694</div>
+    </div>
+  </div>
+
+  <div style="position:relative;width:100%;height:200px;">
+    <canvas id="chart" role="img" aria-label="Đường cong phân phối chuẩn với vùng p-value được tô màu đỏ"></canvas>
+  </div>
+
+  <div id="result-box" class="result-box"></div>
+
+  <div style="margin-top:18px;border-top:0.5px solid var(--color-border-tertiary);padding-top:14px;">
+    <div style="font-size:13px;font-weight:500;margin-bottom:10px;color:var(--color-text-primary);">Cách tính — từng bước (cập nhật theo thanh kéo)</div>
+    <div class="step-row"><div class="step-num">1</div><div class="step-text">Giả sử H₀ đúng: tỷ lệ thật = 3.0%. Kỳ vọng trung bình mẫu = 3% × tổng số lượt.</div></div>
+    <div class="step-row"><div class="step-num">2</div><div class="step-text" id="step2">—</div></div>
+    <div class="step-row"><div class="step-num">3</div><div class="step-text" id="step3">—</div></div>
+    <div class="step-row"><div class="step-num">4</div><div class="step-text" id="step4">—</div></div>
+    <div class="step-row"><div class="step-num">5</div><div class="step-text" id="step5">—</div></div>
+  </div>
+
+  <div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:var(--color-background-secondary);font-size:12px;color:var(--color-text-secondary);line-height:1.8;">
+    <strong style="color:var(--color-text-primary);">Thử nghiệm nhanh:</strong><br>
+    Kéo <strong>cỡ mẫu</strong> hoặc <strong>thời gian</strong> lên cao → SE giảm → Z tăng → vùng đỏ thu hẹp → p-value nhỏ dần.<br>
+    Kéo <strong>tỷ lệ quan sát</strong> về gần 3% → Z nhỏ → vùng đỏ mở rộng → p-value lớn → không bác bỏ H₀.<br>
+    Kéo <strong>α lên</strong> → ngưỡng nới lỏng → dễ bác bỏ H₀ hơn nhưng rủi ro Type I Error tăng.
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const isDark = matchMedia('(prefers-color-scheme:dark)').matches;
+const p0 = 0.03;
+
+function normPDF(x, mu, sd) {
+  return Math.exp(-0.5*((x-mu)/sd)**2) / (sd*Math.sqrt(2*Math.PI));
+}
+function normCDF(z) {
+  const t = 1/(1+0.2316419*Math.abs(z));
+  const d = 0.3989423*Math.exp(-z*z/2);
+  const p = d*t*(0.3193815+t*(-0.3565638+t*(1.7814779+t*(-1.8212560+t*1.3302744))));
+  return z>0 ? 1-p : p;
+}
+function nFmt(n) {
+  return n>=10000 ? (n/1000).toFixed(0)+'k' : n>=1000 ? (n/1000).toFixed(1)+'k' : n.toString();
+}
+
+const STEPS = 250;
+const ctx = document.getElementById('chart').getContext('2d');
+const chart = new Chart(ctx, {
+  type:'line',
+  data:{ datasets:[] },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    animation:{ duration:200 },
+    plugins:{ legend:{display:false}, tooltip:{enabled:false} },
+    scales:{
+      x:{ type:'linear',
+          ticks:{ callback:v=>(v*100).toFixed(1)+'%', maxTicksLimit:9, font:{size:11}, color:isDark?'#9c9a92':'#73726c' },
+          grid:{ color:isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)' } },
+      y:{ display:false, min:0 }
+    }
+  }
+});
+
+function update() {
+  const obsRaw   = parseInt(document.getElementById('obs-slider').value);
+  const alphaPct = parseInt(document.getElementById('alpha-slider').value);
+  const nPerWeek = parseInt(document.getElementById('n-slider').value) * 250;
+  const weeks    = parseInt(document.getElementById('time-slider').value);
+
+  const n     = nPerWeek * weeks;
+  const alpha = alphaPct / 100;
+  const pHat  = obsRaw / 1000;
+  const se    = Math.sqrt(p0*(1-p0)/n);
+  const z     = (pHat - p0) / se;
+  const pv    = 1 - normCDF(z);
+
+  document.getElementById('obs-tag').textContent   = (obsRaw/10).toFixed(1)+'%';
+  document.getElementById('alpha-tag').textContent = alpha.toFixed(2);
+  document.getElementById('n-tag').textContent     = nFmt(nPerWeek);
+  document.getElementById('time-tag').textContent  = weeks === 1 ? '1 tuần' : weeks+' tuần';
+
+  document.getElementById('m-n').textContent  = n.toLocaleString('vi-VN');
+  document.getElementById('m-se').textContent = (se*100).toFixed(3)+'%';
+  document.getElementById('m-z').textContent  = z.toFixed(2);
+  const pvText = pv < 0.0001 ? '< 0.0001' : pv.toFixed(4);
+  document.getElementById('m-pv').textContent = pvText;
+
+  const xMin = p0 - 4.8*se, xMax = p0 + 4.8*se;
+  const xs = [], ys = [];
+  for(let i=0;i<=STEPS;i++){
+    const x = xMin + (xMax-xMin)*i/STEPS;
+    xs.push(x);
+    ys.push(normPDF(x, p0, se));
+  }
+
+  chart.options.scales.x.min = xMin;
+  chart.options.scales.x.max = xMax;
+  chart.data.datasets = [
+    {
+      data: xs.map((x,i) => ({x, y: ys[i]})),
+      borderColor: isDark ? '#6fa8d4' : '#378ADD',
+      borderWidth: 1.5, fill: false, pointRadius: 0, tension: 0.4
+    },
+    {
+      data: xs.map((x,i) => ({x, y: x >= pHat ? ys[i] : null})),
+      borderColor: 'transparent',
+      backgroundColor: isDark ? 'rgba(232,89,60,0.5)' : 'rgba(232,89,60,0.28)',
+      fill: true, pointRadius: 0, tension: 0.4
+    }
+  ];
+  chart.update();
+
+  const reject = pv < alpha;
+  const resEl = document.getElementById('result-box');
+  resEl.className = 'result-box ' + (reject ? 'reject' : 'noReject');
+  resEl.innerHTML = reject
+    ? `<strong>Bác bỏ H₀</strong> — p-value = ${pvText} &lt; α = ${alpha.toFixed(2)} &nbsp;→&nbsp; Kết quả <strong>có ý nghĩa thống kê</strong>. Tỷ lệ ${(obsRaw/10).toFixed(1)}% không phải ngẫu nhiên.`
+    : `<strong>Không bác bỏ H₀</strong> — p-value = ${pvText} ≥ α = ${alpha.toFixed(2)} &nbsp;→&nbsp; Chưa đủ bằng chứng. Tỷ lệ ${(obsRaw/10).toFixed(1)}% có thể chỉ là may mắn.`;
+
+  document.getElementById('step2').textContent =
+    `Tính SE = √(3% × 97% / ${n.toLocaleString('vi-VN')}) = ${(se*100).toFixed(3)}%. ` +
+    (n >= 5000
+      ? `Mẫu lớn (${nFmt(n)}) → SE rất nhỏ → đường cong hẹp → dễ phát hiện chênh lệch.`
+      : n >= 2000
+      ? `Mẫu khá lớn (${nFmt(n)}) → SE đang thu hẹp dần → tín hiệu rõ hơn.`
+      : `Mẫu còn nhỏ (${nFmt(n)}) → SE lớn → đường cong rộng → khó phân biệt tín hiệu.`);
+
+  document.getElementById('step3').textContent =
+    `Tính Z-score = (${(obsRaw/10).toFixed(1)}% − 3.0%) / ${(se*100).toFixed(3)}% = ${z.toFixed(2)}. ` +
+    `Kết quả cách trung tâm ${Math.abs(z).toFixed(2)} lần SE về phía ${z>=0?'phải':'trái'}.`;
+
+  document.getElementById('step4').textContent =
+    `Vùng đỏ = diện tích từ ${(obsRaw/10).toFixed(1)}% trở đi = p-value ≈ ${pvText}. ` +
+    (pv < 0.001 ? 'Vùng đỏ cực nhỏ — gần như không thể xảy ra ngẫu nhiên nếu H₀ đúng.' :
+     pv < 0.05  ? 'Vùng đỏ nhỏ — hiếm khi xảy ra ngẫu nhiên nếu H₀ đúng.' :
+                  'Vùng đỏ còn rộng — kết quả này dễ xảy ra ngẫu nhiên, chưa đủ bằng chứng.');
+
+  document.getElementById('step5').textContent =
+    `So sánh: p-value ${pvText} ${reject?'<':'≥'} α ${alpha.toFixed(2)} → ${reject?'Bác bỏ H₀ ✓ — giao diện mới có tác động thực sự.':'Không bác bỏ H₀ ✗ — cần thêm dữ liệu.'}`;
+}
+
+['obs-slider','alpha-slider','n-slider','time-slider'].forEach(id =>
+  document.getElementById(id).addEventListener('input', update)
+);
+update();
+</script>
